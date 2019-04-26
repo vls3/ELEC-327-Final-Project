@@ -6,6 +6,7 @@
 #include <string.h>
 
 #define NUM_LED 4
+#define NUM_NOTES 8
 #define MAX_LENGTH 5
 #define N 120
 #define SAMPLE_RATE 100000
@@ -18,16 +19,17 @@
 #define A 440
 #define E 758
 #define C 956
-#define G 638
+#define G 784
 
-//#define A 1136 //440 Hz
-//#define B 1012 //494 Hz
-//#define C 956 // 523.25 Hz
-//#define D 851 //587.33 Hz
-//#define E 758 //659.25 Hz
-//#define F 716 // 698.46 Hz
-//#define F_s 675
-//#define G 638 //784 Hz
+//Define buzzer frequencies.
+#define A_buzz 1136 //440 Hz
+#define B_buzz 1012 //494 Hz
+#define C_buzz 956 // 523.25 Hz
+#define D_buzz 851 //587.33 Hz
+#define E_buzz 758 //659.25 Hz
+#define F_buzz 716 // 698.46 Hz
+#define F_s_buzz 675
+#define G_buzz 638 //784 Hz
 #define rest 0
 #define default_brightness 0xE3
 #define LED_OFF 0xE0
@@ -58,6 +60,7 @@ static struct RGB off_LED = {0x00, 0x00, 0x00, 0xE0};
 //static int twinkle[14] = {A, G, E, D, E, 0, D, E, A, B, A, G, E, C};
 
 int samples[N] = {0};
+int buzzer_tones[NUM_NOTES] = {A_buzz, B_buzz, C_buzz, D_buzz, E_buzz, F_buzz, F_s_buzz, G_buzz};
 unsigned int frequency_A, frequency_C, frequency_E, frequency_G, freq_guess;
 unsigned int highest_freq, final_guess;
 
@@ -66,8 +69,9 @@ unsigned int highest_freq, final_guess;
 
 static int MAX_DELAY;
 static unsigned int timer_period = 750;
+int current_note_offset = 0;
 
-static int buzzer_tones[4] = {A, C, E, G};
+//static int buzzer_tones[4] = {A_buzz, C_buzz, E_buzz, G_buzz};
 //static int button_pressed = -1;
 static int num_delays = 0;
 
@@ -94,9 +98,11 @@ int main(void)
         int i, j;
 
         // Configure SPI Pins
-        P1SEL |= BIT2 + BIT4; // SIMO SPI on 1.2, CLK on 1.4
-        P1DIR |= BIT2 + BIT4;
+        P1SEL |= BIT2 + BIT4 + BIT6 + BIT7; // SIMO SPI on 1.2, CLK on 1.4; 1.6 and 1.7 are up/down buttons.
+        P1DIR |= BIT2 + BIT4 + BIT6 + BIT7;
         P1SEL2 = BIT2 + BIT4;
+        P1REN = BIT6 + BIT7; //Enable Pullup/down
+        P1OUT = BIT6 + BIT7; //Select Pullup
 
         //Configure Watchdog timer
         BCSCTL3 |= LFXT1S_2;
@@ -191,56 +197,125 @@ int main(void)
 
         while (1) {
 
-            //Loop to wait for button press to indicate particular tone tuning.
-            // Enable conversion.
-            ADC10CTL0 |= ENC;
-            // Start conversion
-            ADC10CTL0 |= ADC10SC;
+                //In this mode, a button press makes the buzzer play the corresponding note.
+                bool start_game = false;
+                bool game_lost = false;
+                MAX_DELAY = 50;
 
-            //ADC10CTL0 |= ENC + ADC10SC;     // Enable Conversion and conversion start
-            __bis_SR_register(CPUOFF + GIE);
+                while (!start_game) {
+                        //Detect four-button press game-start.
+                        if ((start_game = !(P2IN & BIT0) && !(P2IN & BIT2) && !(P2IN & BIT3) && !(P2IN & BIT4))) {
+                                //Detect a button release.
+                                while ((!(P2IN & BIT0) && !(P2IN & BIT2) && !(P2IN & BIT3) && !(P2IN & BIT4)));
 
-            highest_freq = A;
-            //Do Goertzel to determine closest frequency component
-            frequency_A = goertzel_mag(N, A, SAMPLE_RATE, &samples[0]);
-            //__bis_SR_register(LPM3_bits);
-            freq_guess = frequency_A;
-           // __bis_SR_register(LPM3_bits);
-            frequency_C = goertzel_mag(N, C, SAMPLE_RATE, &samples[0]);
-            //__bis_SR_register(LPM3_bits);
-            if (frequency_C > freq_guess) {
-                freq_guess = frequency_C;
-                highest_freq = C;
-            }
+                                //Play A
+                        }
+                                //Detect whether up button was pressed.
+                        else if (!(P1IN & BIT6)) {
+                                //Shift all notes up by one.
+                                current_note_offset = (current_note_offset + 1 > NUM_NOTES) ? 0 : current_note_offset + 1;
+                                playSound(buzzer_notes[NUM_NOTES - 1], 1);
+                        }
 
-            //__bis_SR_register(LPM3_bits);
-            frequency_E = goertzel_mag(N, E, SAMPLE_RATE, &samples[0]);
-            //__bis_SR_register(LPM3_bits);
-            if (frequency_E > freq_guess) {
-                freq_guess = frequency_E;
-                highest_freq = E;
-            }
+                                //Detect whether down button was pressed.
+                        else if (!(P1IN & BIT7)) {
+                                //Shift all notes down by one.
+                                current_note_offset = (current_note_offset - 1 < 0) ? NUM_NOTES : current_note_offset - 1;
+                                playSound(buzzer_notes[0], 1);
+                        }
+                        else if (!(P2IN & BIT0)) { // P2.0, Switch 0
+                                //last_press = 0;
+                                flashOneLED(green_LED, default_brightness,0);
 
-           // __bis_SR_register(LPM3_bits);
-            frequency_G = goertzel_mag(N, G, SAMPLE_RATE, &samples[0]);
-            //__bis_SR_register(LPM3_bits);
-            if (frequency_G > freq_guess) {
-                //freq_guess = frequency_G;
-                highest_freq = G;
-            }
-            final_guess = highest_freq;
+                                //A button was registered, now wait for release.
+                                while (!(P2IN & BIT0));
+                                flashOneLED(off_LED,LED_OFF, 5);
 
 
-            //#define A 440
-            //#define E 758
-            //#define C 956
-            //#define G 638
+                                //Play C
+                        } else if (!(P2IN & BIT2)) {
+                                //P2.2, Switch 1
+                                flashOneLED(yellow_LED, default_brightness,1);
 
-            //__bis_SR_register(LPM3_bits);
+                                //A button was registered, now wait for release.
+                                while (!(P2IN & BIT2));
+                                flashOneLED(off_LED,LED_OFF, 5);
 
-            //For each of the target tones, do Goertzel. Determine component with highest magnitude.
+                                //Play E
+                        } else if (!(P2IN & BIT3)) {
+                                //P2.3, Switch 2
 
-            //Flash the corresponding LED
+                                flashOneLED(purple_LED, default_brightness, 2);
+
+                                //A button was registered, now wait for release.
+                                while (!(P2IN & BIT3));
+                                flashOneLED(off_LED,LED_OFF, 5);
+
+                        } //Play A
+                        else if (!(P2IN & BIT4)) {//P2.4, Switch 3
+                                flashOneLED(blue_LED, default_brightness, 3);
+
+                                while (!(P2IN & BIT4)) ;
+                                flashOneLED(off_LED,LED_OFF, 5);
+
+
+                        }
+
+
+                }
+
+                //Start the tone-detection game.
+
+                //Loop to wait for button press to indicate particular tone tuning.
+                // Enable conversion.
+                ADC10CTL0 |= ENC;
+                // Start conversion
+                ADC10CTL0 |= ADC10SC;
+
+                //ADC10CTL0 |= ENC + ADC10SC;     // Enable Conversion and conversion start
+                __bis_SR_register(CPUOFF + GIE);
+
+                highest_freq = A;
+                //Do Goertzel to determine closest frequency component
+                frequency_A = goertzel_mag(N, A, SAMPLE_RATE, &samples[0]);
+                //__bis_SR_register(LPM3_bits);
+                freq_guess = frequency_A;
+                // __bis_SR_register(LPM3_bits);
+                frequency_C = goertzel_mag(N, C, SAMPLE_RATE, &samples[0]);
+                //__bis_SR_register(LPM3_bits);
+                if (frequency_C > freq_guess) {
+                        freq_guess = frequency_C;
+                        highest_freq = C;
+                }
+
+                //__bis_SR_register(LPM3_bits);
+                frequency_E = goertzel_mag(N, E, SAMPLE_RATE, &samples[0]);
+                //__bis_SR_register(LPM3_bits);
+                if (frequency_E > freq_guess) {
+                        freq_guess = frequency_E;
+                        highest_freq = E;
+                }
+
+                // __bis_SR_register(LPM3_bits);
+                frequency_G = goertzel_mag(N, G, SAMPLE_RATE, &samples[0]);
+                //__bis_SR_register(LPM3_bits);
+                if (frequency_G > freq_guess) {
+                        //freq_guess = frequency_G;
+                        highest_freq = G;
+                }
+                final_guess = highest_freq;
+
+
+                //#define A 440
+                //#define E 758
+                //#define C 956
+                //#define G 638
+
+                //__bis_SR_register(LPM3_bits);
+
+                //For each of the target tones, do Goertzel. Determine component with highest magnitude.
+
+                //Flash the corresponding LED
 
 
 
@@ -252,74 +327,74 @@ int main(void)
 
 int goertzel_mag(int numSamples, int TARGET_FREQUENCY, int SAMPLING_RATE, int* data)
 {
-    int     k,i;
+        int     k,i;
 
-    unsigned int   q0, q1, q2, magnitude;
+        unsigned int   q0, q1, q2, magnitude;
 
-    //Pre-compute the 4 coefficients for the 4 tones.
+        //Pre-compute the 4 coefficients for the 4 tones.
 
-    /*
-     * coeff = 2 * cos(2*pi/numSamples) * (0.5 + numSamples*TARGET_FREQUENCY / SAMPLING_RATE)
-     */
-    //k = (0.5 + ((numSamples * TARGET_FREQUENCY) / SAMPLING_RATE));
-    q0=0;
-    q1=0;
-    q2=0;
+        /*
+         * coeff = 2 * cos(2*pi/numSamples) * (0.5 + numSamples*TARGET_FREQUENCY / SAMPLING_RATE)
+         */
+        //k = (0.5 + ((numSamples * TARGET_FREQUENCY) / SAMPLING_RATE));
+        q0=0;
+        q1=0;
+        q2=0;
 
-    for (i = 0; i < numSamples; i++)
-    {
+        for (i = 0; i < numSamples; i++)
+        {
+                if (TARGET_FREQUENCY == A)
+                        q0 = (q1 << 1) - q2 + data[i] - TWIDDLE; //About 2
+                else if (TARGET_FREQUENCY == C)
+                        //coeff = 3.299; //About 10/3 or 40/12 or 27/8
+                        q0 = (((q1 << 4) + (q1 << 3) + (q1 << 1) + q1) >> 3) - q2 + data[i] - TWIDDLE;
+
+                else if (TARGET_FREQUENCY == E)
+                        //coeff = 2.8153; //About 20/7, approximate as 20/8
+                        q0 = (((q1 << 4) + (q1 << 2)) >> 3) - q2 + data[i] - TWIDDLE;
+                else if (TARGET_FREQUENCY == G)
+                        q0 = (((q1 << 2) + q1) >> 1) - q2 + data[i] - TWIDDLE; //About 5/2
+
+                q2 = q1;
+                q1 = q0;
+        }
+
+        //Compute the magnitude squared.
+        magnitude = q1*q1 + q2*q2;
+        int product = q1*q2;
         if (TARGET_FREQUENCY == A)
-            q0 = (q1 << 1) - q2 + data[i] - TWIDDLE; //About 2
+                magnitude -= (product << 1); //About 2
         else if (TARGET_FREQUENCY == C)
-            //coeff = 3.299; //About 10/3 or 40/12 or 27/8
-            q0 = (((q1 << 4) + (q1 << 3) + (q1 << 1) + q1) >> 3) - q2 + data[i] - TWIDDLE;
+                //coeff = 3.299; //About 10/3 or 40/12 or 27/8
+                magnitude -= ((product << 4) + (product << 3) + (product << 1) + product) >> 3;
 
         else if (TARGET_FREQUENCY == E)
-            //coeff = 2.8153; //About 20/7, approximate as 20/8
-            q0 = (((q1 << 4) + (q1 << 2)) >> 3) - q2 + data[i] - TWIDDLE;
+                //coeff = 2.8153; //About 20/7, approximate as 20/8
+                magnitude -= ((product << 4) + (product << 2)) >> 3;
         else if (TARGET_FREQUENCY == G)
-            q0 = (((q1 << 2) + q1) >> 1) - q2 + data[i] - TWIDDLE; //About 5/2
-
-        q2 = q1;
-        q1 = q0;
-    }
-
-    //Compute the magnitude squared.
-    magnitude = q1*q1 + q2*q2;
-    int product = q1*q2;
-    if (TARGET_FREQUENCY == A)
-        magnitude -= (product << 1); //About 2
-        else if (TARGET_FREQUENCY == C)
-            //coeff = 3.299; //About 10/3 or 40/12 or 27/8
-            magnitude -= ((product << 4) + (product << 3) + (product << 1) + product) >> 3;
-
-        else if (TARGET_FREQUENCY == E)
-            //coeff = 2.8153; //About 20/7, approximate as 20/8
-            magnitude -= ((product << 4) + (product << 2)) >> 3;
-        else if (TARGET_FREQUENCY == G)
-            magnitude -= ((product << 2) + product) >> 1; //About 5/2
-    return magnitude >> 2;
+                magnitude -= ((product << 2) + product) >> 1; //About 5/2
+        return magnitude >> 2;
 }
 
 /*
  * Generate a random button sequence of length (length).
  */
-//static int *
-//generateRandomButtonSequence(int length)
-//{
-//        int *sequence = malloc(sizeof(int) * length);
-//        int *sequence_ptr = sequence;
-//
-//        int i;
-//        for (i = 0; i < length; i++) {
-//                *sequence_ptr = rand() % NUM_LED;
-//                sequence_ptr++;
-//
-//        }
-//
-//        return sequence;
-//
-//}
+static int *
+generateRandomButtonSequence(int length)
+{
+        int *sequence = malloc(sizeof(int) * length);
+        int *sequence_ptr = sequence;
+
+        int i;
+        for (i = 0; i < length; i++) {
+                *sequence_ptr = rand() % NUM_LED;
+                sequence_ptr++;
+
+        }
+
+        return sequence;
+
+}
 
 /*
  *
@@ -337,12 +412,12 @@ playAnimation(struct RGB LEDs[], int length)
         int i, j;
 
         for (i = 0; i < length; i+= NUM_LED) {
-            //Every NUM_LED iterations, signal the start of the pattern.
-            startPattern();
-            for (j = 0; j < NUM_LED; j++)
-                flashPattern(LEDs[i]);
+                //Every NUM_LED iterations, signal the start of the pattern.
+                startPattern();
+                for (j = 0; j < NUM_LED; j++)
+                        flashPattern(LEDs[i]);
 
-            endPattern();
+                endPattern();
 
         }
 
@@ -543,7 +618,7 @@ flashOneLED(struct RGB LED, unsigned char brightness, int LED_num)
 
         //Play a buzzer sound if the specified LED index is on the board.
         if (brightness != LED_OFF && LED_num < NUM_LED)
-                PlaySound(buzzer_tones[LED_num], 1);
+                PlaySound(buzzer_tones[(LED_num + current_note_offset) % NUM_NOTES], 1);
 
 
 }
@@ -559,9 +634,9 @@ flashOneLED(struct RGB LED, unsigned char brightness, int LED_num)
  */
 void playSong(int song[], int length, int duration)
 {
-    int j;
-    for (j = 0; j < length; j++)
-        PlaySound(song[j], duration);
+        int j;
+        for (j = 0; j < length; j++)
+                PlaySound(song[j], duration);
 }
 
 /*
