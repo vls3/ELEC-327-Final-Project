@@ -7,7 +7,7 @@
 #include <string.h>
 
 #define NUM_LED 4
-#define NUM_NOTES 8
+#define NUM_NOTES 12
 #define MAX_LENGTH 5
 #define NUM_SAMPLES 120
 #define SAMPLE_RATE 10000
@@ -25,13 +25,17 @@
 
 //Define buzzer frequencies.
 #define A_buzz 1136 //440 Hz
+#define A_s_buzz 1121 //466.16 Hz
 #define B_buzz 1012 //494 Hz
 #define C_buzz 956 // 523.25 Hz
+#define C_s_buzz 903 //554.37
 #define D_buzz 851 //587.33 Hz
+#define D_s_buzz 804 //622.25 Hz
 #define E_buzz 758 //659.25 Hz
 #define F_buzz 716 // 698.46 Hz
 #define F_s_buzz 675
 #define G_buzz 638 //784 Hz
+#define G_s_buzz 602//830.61 Hz
 #define rest 0
 #define default_brightness 0xE3
 #define LED_OFF 0xE0
@@ -57,8 +61,9 @@ struct RGB off_LED = {0x00, 0x00, 0x00};
 
 
 int samples[NUM_SAMPLES] = {0};
-int buzzer_tones[NUM_NOTES] = {A_buzz, B_buzz, C_buzz, D_buzz, E_buzz, F_buzz, F_s_buzz, G_buzz};
-unsigned int frequency_A, frequency_C, frequency_E, frequency_G, freq_guess;
+int buzzer_tones[NUM_NOTES] = {A_buzz, A_s_buzz, B_buzz, C_buzz, C_s_buzz,
+                               D_buzz, D_s_buzz, E_buzz, F_buzz, F_s_buzz,
+                               G_buzz, G_s_buzz};
 int highest_freq;
 int final_guess = 0;
 
@@ -215,7 +220,7 @@ int main(void)
                         else if (!(P1IN & BIT6)) {
                                 //Shift all notes up by one.
                                 while (!(P1IN & BIT6));
-                                current_note_offset = (current_note_offset + 1 > NUM_NOTES) ? 0 : current_note_offset + 1;
+                                current_note_offset = (current_note_offset + 1 == NUM_NOTES) ? 0 : current_note_offset + 1;
                                 PlaySound(buzzer_tones[NUM_NOTES - 1], 1);
                         }
 
@@ -223,7 +228,7 @@ int main(void)
                         else if (!(P1IN & BIT7)) {
                                 while (!(P1IN & BIT7));
                                 //Shift all notes down by one.
-                                current_note_offset = (current_note_offset - 1 < 0) ? NUM_NOTES : current_note_offset - 1;
+                                current_note_offset = (current_note_offset - 1 < 0) ? NUM_NOTES - 1 : current_note_offset - 1;
                                 PlaySound(buzzer_tones[0], 1);
                         }
                                 //Play A
@@ -540,6 +545,7 @@ int main(void)
                 }
 
                 int *samples_ptr;
+                int num_iterations = 0;
 
                 if (start_random && !reset) {
                         struct RGB random[4] = {red_LED, purple_LED, red_LED, purple_LED};
@@ -603,6 +609,11 @@ int main(void)
                                 *music_sequence = buzzer_tones[note];
                                 music_sequence++;
                                 samples_ptr++;
+                                num_iterations++;
+                                if (num_iterations == NUM_SAMPLES) {
+                                        num_iterations = 0;
+                                        samples_ptr = &samples[0];
+                                }
 
                         }
 
@@ -627,6 +638,7 @@ int main(void)
 int goertzel_guess()
 {
         final_guess = 1;
+        unsigned int frequency_A, frequency_C, frequency_E, frequency_G, freq_guess;
 
         frequency_A = goertzel_mag(NUM_SAMPLES, A, SAMPLE_RATE, &samples[0]);
 
