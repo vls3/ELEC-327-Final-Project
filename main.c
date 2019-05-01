@@ -105,7 +105,6 @@ int main(void)
         BCSCTL3 |= LFXT1S_2;
         WDTCTL = WDT_ADLY_16;                     //WDT 16 ms, ACL, interval timer mode, stop WDT
         IE1 |= WDTIE;                             //Enable interrupt for WDT
-        //IFG2 &= ~P2IFG;
 
 
         /*
@@ -155,12 +154,7 @@ int main(void)
         // Turn ADC on in single line before configuration.
         ADC10CTL0 = ADC10ON;
 
-        // Make sure the ADC is not running per 22.2.7
-        //while(ADC10CTL1 & ADC10BUSY);
-
-        // Repeat conversion.
-        //ADC10DTC0 = ADC10CT;
-        // Only one conversion at a time.
+        // Repeat conversion
         ADC10DTC1 = NUM_SAMPLES;
         // Put results at specified place in memory.
         ADC10SA = &samples[0];
@@ -517,29 +511,8 @@ int main(void)
                         //ADC10CTL0 &= ~ADC10IE;
 
                         highest_freq = goertzel_guess();
-                        //ADC10CTL0 |= ADC10IE;
-                        //__bis_SR_register(LPM3_bits);
-                        //Do Goertzel to determine closest frequency component
-
-                        //final_guess = 0;
-                        //__bis_SR_register(LPM3_bits);
 
                         flashOneLED(LED_colors[highest_freq], default_brightness, highest_freq);
-                        break;
-                        //flashOneLED(off_LED, default_brightness, NUM_LED + 1);
-                        //break;
-
-
-                        //#define A 440
-                        //#define E 758
-                        //#define C 956
-                        //#define G 638
-
-                        //__bis_SR_register(LPM3_bits);
-
-                        //For each of the target tones, do Goertzel. Determine component with highest magnitude.
-
-                        //Flash the corresponding LED
 
 
                 }
@@ -556,8 +529,6 @@ int main(void)
                         __bis_SR_register(LPM3_bits);
                         flashOneLED(off_LED,LED_OFF, 5);
                         samples_ptr = &samples[0];
-
-
 
 
 
@@ -595,15 +566,6 @@ int main(void)
 
                         //Read value from P2.7 NUM_NOTES times
                         for (j = 0; j < SEQUENCE_LENGTH; j++) {
-                                //int note = rand() % NUM_NOTES;
-                                // int note = 0;
-//                   for (i = 0; i < NUM_NOTES; i++) {
-//                       __bis_SR_register(LPM3_bits);
-//                       note += ((P2IN & BIT7) <<  j);
-////                       PlaySound(buzzer_tones[note], 8);
-//
-//
-//                   }
 
                                 int note = *samples_ptr % NUM_NOTES;
                                 *music_sequence = buzzer_tones[note];
@@ -643,7 +605,7 @@ int goertzel_guess()
         frequency_A = goertzel_mag(NUM_SAMPLES, A, SAMPLE_RATE, &samples[0]);
 
         freq_guess = frequency_A;
-        //__bis_SR_register(LPM3_bits);
+
         frequency_C = goertzel_mag(NUM_SAMPLES, C, SAMPLE_RATE, &samples[0]);
 
         if (frequency_C > freq_guess) {
@@ -653,7 +615,6 @@ int goertzel_guess()
 
 
         frequency_E = goertzel_mag(NUM_SAMPLES, E, SAMPLE_RATE, &samples[0]);
-        //__bis_SR_register(LPM3_bits);
 
         if (frequency_E > freq_guess) {
                 freq_guess = frequency_E;
@@ -689,7 +650,7 @@ int goertzel_mag(int numSamples, int TARGET_FREQUENCY, int SAMPLING_RATE, int* d
         /*
          * coeff = 2 * cos(2*pi/numSamples) * (0.5 + numSamples*TARGET_FREQUENCY / SAMPLING_RATE)
          */
-        //k = (0.5 + ((numSamples * TARGET_FREQUENCY) / SAMPLING_RATE));
+
         q0 = 0;
         q1 = 0;
         q2 = 0;
@@ -698,12 +659,9 @@ int goertzel_mag(int numSamples, int TARGET_FREQUENCY, int SAMPLING_RATE, int* d
                 if (TARGET_FREQUENCY == A)
                         q0 = (q1 << 1) - q2 + data[i] - TWIDDLE; //About 2
                 else if (TARGET_FREQUENCY == C)
-                        //coeff = 3.299; //About 10/3 or 40/12 or 27/8
-                        q0 = (((q1 << 4) + (q1 << 3) + (q1 << 1) + q1) >> 3) - q2 + data[i] - TWIDDLE;
-
+                        q0 = (((q1 << 4) + (q1 << 3) + (q1 << 1) + q1) >> 3) - q2 + data[i] - TWIDDLE; //About 10/3
                 else if (TARGET_FREQUENCY == E)
-                        //coeff = 2.8153; //About 20/7, approximate as 20/8
-                        q0 = (((q1 << 4) + (q1 << 2)) >> 3) - q2 + data[i] - TWIDDLE;
+                        q0 = (((q1 << 4) + (q1 << 2)) >> 3) - q2 + data[i] - TWIDDLE; //About 20/7, approximate as 20/8
                 else if (TARGET_FREQUENCY == G)
                         q0 = (((q1 << 2) + q1) >> 1) - q2 + data[i] - TWIDDLE; //About 5/2
 
@@ -717,14 +675,12 @@ int goertzel_mag(int numSamples, int TARGET_FREQUENCY, int SAMPLING_RATE, int* d
         if (TARGET_FREQUENCY == A)
                 magnitude -= (product << 1); //About 2
         else if (TARGET_FREQUENCY == C)
-                //coeff = 3.299; //About 10/3 or 40/12 or 27/8
                 magnitude -= ((product << 4) + (product << 3) + (product << 1) + product) >> 3;
-
         else if (TARGET_FREQUENCY == E)
-                //coeff = 2.8153; //About 20/7, approximate as 20/8
+
                 magnitude -= ((product << 4) + (product << 2)) >> 3;
         else if (TARGET_FREQUENCY == G)
-                magnitude -= ((product << 2) + product) >> 1; //About 5/2
+                magnitude -= ((product << 2) + product) >> 1;
         return magnitude >> 6;
 }
 
