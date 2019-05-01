@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>ELEC 327 Final Project: Music Board</title>
+		<!-- link to main stylesheet -->
+		<link rel="stylesheet" type="text/css" href="/css/main.css">
+	</head>
+	<body>
+		<nav>
+    		<ul>
+        		<li><a href="/">Home</a></li>
+	        	<li><a href="https://www.youtube.com/watch?v=afCl2QGnUp0">Demo</a></li>
+        		<li><a href="https://www.youtube.com/watch?v=ps7i3oDU3kk">Presentation</a></li>
+        		<li><a href="/blog">Report</a></li>
+    		</ul>
+		</nav>
+		<div class="container">
+    		<div class="blurb">
+        		<h1>Welcome to our Final Project Website!</h1>
+				<p>Below are videos of our presentations.</p>
+			
+			 <iframe width="560" height="315" src="https://www.youtube.com/embed/afCl2QGnUp0" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+			<iframe width="560" height="315" src="https://www.youtube.com/embed/ps7i3oDU3kk" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+			<h2>Written Report</h2>
+			<h3>Objective</h3>
+				<p>In this project, we were tasked with creating an interactive closed-loop low-power embedded system.
+					For our final project, we designed a multi faceted device, with four main usage modules,
+					for the purpose of aiding musicians in training to identify and match a pitch. In the first mode,
+					the device is intended to tune the strings of a violin, using an audio amplifier and ADC to
+					calculate the fourier coefficients at the four frequencies. The second mode is a game where users practice pitch identification.
+					In the third mode, users can manually play and tune to the full range of pitches available on the device.
+					In the final mode, the device plays a randomly generated musical sequence based on samples from the audio amplifier.
+					Our objective was to create a fully functioning device which meets these design criteria.</p>
+			<h3>Hardware Design</h3>
+			<p>For our PCB design, we used many similar parts to those utilized in previous labs. The device is run and operated on an MSP430G2553. The user interacts with the board using 6 push down buttons. Four of the buttons correspond to an individual LED which light up to differentiate the pitches. Additionally, there is a Piezo buzzer which plays the pitches. The board can be run independently as it has an attached battery pack, which is operated by a switch. Finally, the new component added to the board is an electret microphone amplifier. A visualization of the front and back of the PCB are shown below in Figures 1. 
+</p>
+			<p>The attached audio amplifier part was bought as a fully assembled board. It has a 20-20KHz electret microphone soldered onto it, which is used for audio sampling. For the amplification, it uses the Maxim MAX4466 op-amp. The amplifier also has a potentiometer attached which can be used to adjust the gain of the system, from 25x to 125x. The part has 3 output ports, GND, VCC, and OUT. The part will output an analog signal with a DC bias of VCC/2. The electret microphone amplifier is then attached directly to the ADC port on the MSP430 for discrete sampling. </p>
+			<h3>Software Design</h3>
+			<p>As mentioned earlier, our device can seamlessly transition from four different user modes; frequency detection, random sequence generation, audio pitch matching, and interactive ear training. Each module will be explained in further detail below.
+</p>
+			<h4>Frequency Detection</h4>
+			<p>The original vision for this device was a musical tuner. To do this for a particular audio sample, the device would need to determine the relative magnitudes of the power contained at the target frequencies. However, as an MSP430 has too little computing power and memory for a full FFT, we chose to use the Goertzel algorithm, which computes the magnitudes of single frequency components. This was perfect for our application of tuning to the four notes on a violin. As tuning to additional frequencies would require computing more components, we instead chose to make the module guess which of the four frequencies is being played.
+In our implementation, the ADC10 takes 120 samples from the microphone amplifier at 76 kHz, yielding a sampling rate of 1.572 kbps. In our Goertzel function, we have precomputed the coefficients for the four frequencies of the violin pitches G, D, A, and E, which greatly speeds up processing time. The function then computes and scales the Goertzel magnitudes for all four frequencies. Whichever note had the highest magnitude is the note that was most likely sampled, and the corresponding LED will light up on the PCB. In practice, however, this module does not work as well as originally intended. The Goertzel algorithm typically requires floating point multiplication which is very difficult on the MSP430. Therefore, we approximate it using bit shifts for division and multiplication, which leads to algebraic errors. Additionally, we found that the signal from the audio samples was very noisy and did not lead to extremely accurate frequency guesses.
+			</p>
+			<h4>Random Sequence Generation</h4>
+			<p>The second module is intended to inspire musicians while creating new songs. The ADC10 samples from the amplifier and pulls each sample high or low, compared to the threshold VCC/2. The value of each sample is mapped to a particular note from G5 to G6, and these notes are combined to produce a sequence, for which the length is adjustable. The device is thus essentially transforming random noise to song, which the user may use as inspiration for an original composition. Every time the user pushes the up button, the device plays a new sequence.
+			</p>
+			<h4>Pitch Playback</h4>
+			<p>In this module, the device simply plays back the frequencies associated with each button and light up the corresponding LED. The user can also use the buttons on the right to increase or decrease all the frequencies being played by one half-step, if the user would like to listen to notes beyond the four standard strings. This can be used to match pitch to self-tune any note in the range of frequencies available on our device, the octave G5 to G6. 
+			</p>
+			<h4>Interactive Ear Training Game</h4>
+			<p>In the final module, users can play a simple game pitch identification game, an important skill for musicians to cultivate. As a reference, the game first plays through four adjacent chromatic notes. Then it randomly play back one of those four notes, and the user must press the button of the note they believe they heard. Depending on whether or not it was a correct guess, the game will display a win/loss animation. If the guess was incorrect, the correct note will also be flashed. Regardless of a win or loss, the game then restarts. At any point in the game, the user may switch the frequency range for the game up and down by half-steps with the up and down buttons.</p>
+			<p>The user can switch between the modes (each indicated by a unique animation) by simultaneously pressing the following combinations of buttons:
+			</p>
+			
+			 <ol type="1">
+			  <li>UP and DOWN: Goertzel</li>
+			  <li>Button 1 and Button 4: Ear Training Game</li>
+			  <li>Button 2 and Button 3: Random Sequence Generation</li>
+				 <li>Buttons 1-4:  Reset the board and return to Pitch Playback.</li>
+			</ol> 
+			
+			<h4>Conclusion</h4>
+			<p>Our final device was able to successfully meet three of the four original device criteria. However, due to time limitations, the frequency detection module is not as successful as originally hoped for. If we were to continue to work on our device, we would add a microcontroller with higher computing power in order to calculate the full FFT, which would allow use to tune notes beyond just identifying one of four frequencies. Additionally, this would allow us to get more accurate readings from the audio amplifier so that we could filter out noise better. Finally, we would take the time to adjust any calculations of frequency to be as precise as possible to each of the true pitch values. The pitch training game module can also be expanded to play longer sequences of notes, for more advanced musician levels. This will train not only pitch identification but also memory.</p>
+<p>In conclusion, the device has multiple applicable uses for musicians, and in particular violinists. Musicians can practice identifying notes by ear, tune their instruments, and getting inspiration for original musical pieces.
+			</p>
+			
+
+	
+		</div><!-- /.blurb -->
+		</div><!-- /.container -->
+		<footer>
+		</footer>
+	</body>
+</html>
